@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vacío Cuántico: Manuel Palacio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'neon-cyan': '#00ffff',
+                        'neon-amber': '#ffaa00',
+                        'neon-purple': '#bd00ff',
+                        'neon-red': '#ff0055',
+                        'deep-space': '#020204',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Courier New', 'monospace'],
+                        serif: ['Merriweather', 'serif'],
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'glitch': 'glitch 1s linear infinite',
+                    },
+                    keyframes: {
+                        float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } },
+                        glitch: {
+                            '2%, 64%': { transform: 'translate(2px,0) skew(0deg)' },
+                            '4%, 60%': { transform: 'translate(-2px,0) skew(0deg)' },
+                            '62%': { transform: 'translate(0,0) skew(5deg)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Librerías -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap');
+
+        body {
+            margin: 0; overflow: hidden; background-color: #020204;
+            font-family: 'Inter', sans-serif; touch-action: none; user-select: none;
+        }
+        
+        #canvas-container { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            cursor: crosshair; z-index: 0;
+            background: radial-gradient(circle at center, #050510 0%, #000000 100%);
+        }
+        
+        #webcam, #motionCanvas { display: none; }
+
+        /* UI Classes */
+        .glass-panel {
+            background: rgba(8, 8, 12, 0.9);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        }
+        
+        .mode-btn {
+            color: #9ca3af; 
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+            opacity: 0.7;
+        }
+        .mode-btn:hover { opacity: 1; color: white; }
+        .mode-btn.active {
+            opacity: 1;
+            border-bottom-color: #00ffff;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .fade-out { opacity: 0; pointer-events: none; transition: opacity 0.8s ease-out; }
+        .fade-in { opacity: 1; transition: opacity 1s ease-in; }
+        .hidden-ui { opacity: 0; pointer-events: none; }
+        
+        /* CORRECCIÓN DE CENTRADO AL MINIMIZAR */
+        #controls-wrapper {
+            transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        
+        .wrapper-minimized {
+            transform: translate(-50%, 220px) !important; 
+        }
+        
+        .chevron-rotated { transform: rotate(180deg); }
+
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%;
+            background: #00ffff; cursor: pointer; margin-top: -5px; box-shadow: 0 0 8px #00ffff;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px;
+        }
+
+        /* ANIMACIÓN CINEMÁTICA DE TEXTO MEJORADA (Más lenta y fluida) */
+        @keyframes cinematicScroll {
+            0% { 
+                opacity: 0; 
+                transform: translateX(40px); /* Entra suavemente */
+                filter: blur(8px);
+            }
+            15% { 
+                opacity: 1; 
+                transform: translateX(0); /* Se centra */
+                filter: blur(0);
+            }
+            90% { 
+                opacity: 1; 
+                transform: translateX(0); /* Permanece legible mucho tiempo */
+                filter: blur(0);
+            }
+            100% { 
+                opacity: 0; 
+                transform: translateX(-20px); /* Se desvanece */
+                filter: blur(4px);
+            }
+        }
+        
+        .animate-text-flow {
+            /* Duración 12s para lectura contemplativa */
+            animation: cinematicScroll 12s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        .glitch-text { position: relative; }
+        .glitch-text::before, .glitch-text::after {
+            content: attr(data-text); position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        .glitch-text::before {
+            left: 2px; text-shadow: -1px 0 #ff00c1; clip: rect(44px, 450px, 56px, 0); animation: glitch-anim 5s infinite linear alternate-reverse;
+        }
+        .glitch-text::after {
+            left: -2px; text-shadow: -1px 0 #00fff9; clip: rect(44px, 450px, 56px, 0); animation: glitch-anim2 5s infinite linear alternate-reverse;
+        }
+        @keyframes glitch-anim {
+            0% { clip: rect(31px, 9999px, 94px, 0); } 4.16% { clip: rect(70px, 9999px, 19px, 0); }
+            8.33% { clip: rect(6px, 9999px, 8px, 0); } 100% { clip: rect(65px, 9999px, 49px, 0); }
+        }
+        @keyframes glitch-anim2 {
+            0% { clip: rect(67px, 9999px, 96px, 0); } 4.16% { clip: rect(32px, 9999px, 5px, 0); }
+            8.33% { clip: rect(45px, 9999px, 93px, 0); } 100% { clip: rect(25px, 9999px, 60px, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <video id="webcam" autoplay playsinline width="64" height="48"></video>
+    <canvas id="motionCanvas" width="64" height="48"></canvas>
+
+    <!-- 1. PANTALLA DE INICIO -->
+    <div id="start-screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center p-8 text-white bg-black/90 backdrop-blur-xl transition-all duration-1000">
+        <div class="max-w-4xl w-full text-center space-y-12 animate-float pointer-events-none">
+            <div class="pointer-events-auto space-y-8">
+                <div>
+                    <p class="text-neon-cyan font-mono text-xs tracking-[0.6em] uppercase opacity-80 mb-4">Experiencia Inmersiva V.26</p>
+                    <h1 class="glitch-text text-5xl md:text-8xl font-serif italic text-white drop-shadow-[0_0_30px_rgba(0,255,255,0.4)]" data-text="El Vacío">
+                        El Vacío
+                    </h1>
+                    <h2 class="text-2xl md:text-3xl font-light font-serif text-gray-400 mt-2">No Está Vacío</h2>
+                </div>
+                
+                <div class="glass-panel p-10 rounded-lg max-w-2xl mx-auto text-left border-l-4 border-neon-cyan shadow-2xl">
+                    <p class="text-gray-300 text-base md:text-lg leading-relaxed font-light font-serif">
+                        Lo que llamamos "nada" es un océano invisible de potencial infinito. 
+                        <br><br>
+                        Esta experiencia te invita a romper el equilibrio. A tocar lo intocable. A ser el observador que da forma a la realidad.
+                    </p>
+                    <div class="mt-6 flex items-center gap-4 text-sm text-gray-400 font-mono">
+                        <span class="flex items-center gap-2"><span class="text-neon-amber">◉</span> Toca para perturbar</span>
+                        <span class="flex items-center gap-2"><span class="text-neon-cyan">◉</span> Observa los ecos</span>
+                    </div>
+                </div>
+
+                <button onclick="startExperience()" class="group relative px-16 py-5 bg-transparent overflow-hidden transition-all duration-300 mt-4">
+                    <div class="absolute inset-0 w-full h-full bg-neon-cyan/5 group-hover:bg-neon-cyan/15 transition-all"></div>
+                    <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-neon-cyan to-transparent"></div>
+                    <div class="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-neon-cyan to-transparent"></div>
+                    <span class="font-mono text-neon-cyan text-sm tracking-[0.3em] font-bold group-hover:tracking-[0.4em] transition-all duration-500">MATERIALIZAR SISTEMA</span>
+                </button>
+
+                <div class="pt-10 opacity-50 hover:opacity-100 transition-opacity">
+                    <p class="text-[10px] font-mono tracking-[0.2em] text-gray-500 uppercase">Concepto, Diseño & Código</p>
+                    <p class="text-sm font-serif italic text-white mt-1">Manuel Palacio</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. UI PRINCIPAL -->
+    <div id="main-ui" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-20 hidden-ui">
+        
+        <!-- HEADER -->
+        <div class="flex justify-between items-start pointer-events-auto">
+            <div id="status-panel" class="relative transition-transform duration-500 transform translate-y-0">
+                <button onclick="toggleStatusPanel()" class="absolute -right-3 -top-2 bg-gray-800 text-gray-400 rounded-full w-5 h-5 flex items-center justify-center text-xs hover:text-white hover:bg-gray-700 z-10 border border-gray-600 shadow-lg">
+                    <span id="status-chevron">−</span>
+                </button>
+                <div class="glass-panel px-5 py-3 rounded-br-2xl border-l-4 border-neon-cyan overflow-hidden">
+                    <h2 class="text-gray-400 font-bold tracking-widest text-[10px] font-mono whitespace-nowrap uppercase">Lente Actual</h2>
+                    <div class="flex items-center gap-3 mt-1">
+                        <span id="mode-indicator" class="w-2 h-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_#00ffff]"></span>
+                        <span id="mode-text" class="text-white text-sm font-bold font-mono tracking-wider">PARTÍCULAS</span>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="toggleLog()" class="glass-panel px-6 py-4 rounded-bl-2xl text-xs font-bold font-mono text-gray-300 hover:text-white hover:border-neon-purple transition-all border-r-4 border-transparent hover:border-r-neon-purple flex items-center gap-3 shadow-lg group">
+                <span class="group-hover:tracking-widest transition-all duration-300">BITÁCORA</span>
+                <svg class="w-4 h-4 text-neon-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            </button>
+        </div>
+
+        <!-- LOG FEEDBACK (Centrado, técnico) -->
+        <div id="system-log" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none transition-all duration-700 opacity-0 scale-90">
+            <p id="log-text" class="text-neon-amber font-mono text-xs tracking-[0.2em] bg-black/80 px-4 py-1 rounded border border-neon-amber/30 uppercase"></p>
+        </div>
+
+        <!-- WRAPPER COMPLETO CENTRADO -->
+        <div id="controls-wrapper" class="pointer-events-auto w-full max-w-xl mx-auto absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-0">
+            
+            <!-- ÁREA DE SUBTÍTULOS (Flotando ENCIMA del panel de vidrio) -->
+            <div id="subtitle-area" class="w-full min-h-[70px] flex items-end justify-center pb-6 pointer-events-none">
+                <div id="subtitle-text" class="text-center opacity-0 transform translate-x-4 max-w-lg">
+                    <!-- TAMAÑO DE TEXTO REDUCIDO: text-lg md:text-xl -->
+                    <p class="text-white font-serif italic text-lg md:text-xl tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] text-shadow leading-relaxed">
+                        <!-- Texto generado dinámicamente -->
+                    </p>
+                </div>
+            </div>
+
+            <!-- PANEL DE VIDRIO (CONTROLES) -->
+            <div class="glass-panel rounded-t-2xl pb-6 px-6 pt-2 relative shadow-2xl">
+                <!-- Barra de agarre -->
+                <div onclick="toggleControlsPanel()" class="w-full h-8 flex justify-center items-center cursor-pointer mb-2 hover:bg-white/5 rounded-t-xl group">
+                    <svg id="controls-chevron" class="w-4 h-4 text-gray-500 group-hover:text-neon-cyan transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+
+                <!-- SELECTOR DE MODO -->
+                <div class="flex justify-around mb-6 border-b border-gray-700/50 pb-4">
+                    <button onclick="setMode('particles')" id="btn-particles" class="mode-btn active text-xs font-mono font-bold py-2 px-4 tracking-wider">● PARTÍCULAS</button>
+                    <button onclick="setMode('strings')" id="btn-strings" class="mode-btn text-xs font-mono font-bold py-2 px-4 tracking-wider">〰 CUERDAS</button>
+                    <button onclick="setMode('energy')" id="btn-energy" class="mode-btn text-xs font-mono font-bold py-2 px-4 tracking-wider">🔥 ENERGÍA</button>
+                </div>
+
+                <!-- SLIDER -->
+                <div class="flex justify-between items-end mb-3">
+                    <label class="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-widest">Dilatación Temporal</label>
+                    <span id="speed-val" class="text-lg font-mono text-neon-cyan font-bold">1.0x</span>
+                </div>
+                <input type="range" min="0" max="3" step="0.1" value="1" oninput="updateTimeSpeed(this.value)" class="w-full mb-6 cursor-pointer">
+                
+                <!-- FOOTER INFO -->
+                <div class="flex justify-between items-center pt-4 border-t border-gray-700/50">
+                    <div class="flex gap-4">
+                        <button id="audio-btn" onclick="toggleAudio()" class="text-xs font-mono text-gray-400 hover:text-neon-cyan flex items-center gap-2 bg-white/5 px-3 py-2 rounded hover:bg-white/10 transition-all">
+                            <span id="audio-icon">🔇</span> <span id="audio-label">SILENCIO</span>
+                        </button>
+                        <button id="cam-btn" onclick="toggleCamera()" class="text-xs font-mono text-gray-400 hover:text-neon-amber flex items-center gap-2 bg-white/5 px-3 py-2 rounded hover:bg-white/10 transition-all">
+                            <span id="cam-icon">📷</span> <span id="cam-label">CAM: OFF</span>
+                        </button>
+                    </div>
+                    <span class="text-[10px] text-gray-500 font-mono tracking-widest uppercase opacity-70">
+                        Dev: Manuel Palacio
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. BITÁCORA LATERAL -->
+    <div id="side-panel" class="absolute top-0 right-0 h-full w-full md:w-[500px] glass-panel transform translate-x-full transition-transform duration-500 z-40 flex flex-col pointer-events-auto border-l border-gray-700">
+        <div class="p-8 border-b border-gray-700 flex justify-between items-center bg-black/20">
+            <div>
+                <h2 class="text-neon-purple font-mono font-bold tracking-[0.2em] text-lg">BITÁCORA</h2>
+                <p class="text-xs text-gray-500 font-mono mt-1">SISTEMA DE NAVEGACIÓN CUÁNTICA</p>
+            </div>
+            <button onclick="toggleLog()" class="text-gray-400 hover:text-white hover:rotate-90 transition-transform duration-300 text-xl">✕</button>
+        </div>
+        
+        <div class="p-8 overflow-y-auto custom-scroll flex-1 space-y-12">
+            
+            <section class="space-y-4">
+                <h3 class="text-white font-serif italic text-2xl border-b border-gray-700 pb-2">Poética del Espacio</h3>
+                <p class="text-gray-300 text-sm leading-relaxed font-light text-justify">
+                    En el tejido de la realidad, no existe el silencio absoluto. 
+                    <br><br>
+                    Al interactuar con esta simulación, no solo observas; participas. Tu atención colapsa la función de onda. Tu movimiento agita el mar de Dirac.
+                </p>
+            </section>
+
+            <section class="space-y-6">
+                <h4 class="text-gray-500 font-mono text-xs uppercase tracking-widest mb-4">LENGUAJES DEL UNIVERSO</h4>
+                
+                <div class="group">
+                    <h3 class="text-neon-cyan font-mono font-bold text-sm mb-2 group-hover:translate-x-2 transition-transform">01. PARTÍCULAS</h3>
+                    <p class="text-gray-400 text-xs font-light leading-relaxed pl-4 border-l-2 border-neon-cyan/30">
+                        Chispas de existencia. Breves destellos de materia que desafían a la nada antes de regresar a ella.
+                    </p>
+                </div>
+
+                <div class="group">
+                    <h3 class="text-neon-purple font-mono font-bold text-sm mb-2 group-hover:translate-x-2 transition-transform">02. CUERDAS</h3>
+                    <p class="text-gray-400 text-xs font-light leading-relaxed pl-4 border-l-2 border-neon-purple/30">
+                        La música fundamental. Filamentos vibrando en armonías invisibles.
+                    </p>
+                </div>
+
+                <div class="group">
+                    <h3 class="text-neon-red font-mono font-bold text-sm mb-2 group-hover:translate-x-2 transition-transform">03. ENERGÍA</h3>
+                    <p class="text-gray-400 text-xs font-light leading-relaxed pl-4 border-l-2 border-neon-red/30">
+                        El fuego primordial. Mapas de calor que revelan dónde el universo respira con más fuerza.
+                    </p>
+                </div>
+            </section>
+            
+            <div class="pt-8 border-t border-gray-800 text-center opacity-60">
+                <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Arquitectura Digital</p>
+                <p class="text-sm text-neon-cyan font-serif italic mt-1">Manuel Palacio</p>
+                <p class="text-[10px] text-gray-600 mt-2">© 2025</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- CANVAS -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- ESTADO ---
+        let currentMode = 'particles';
+        let isExperienceActive = false;
+        let timeSpeed = 1.0;
+        let audioEnabled = false;
+        let noiseSynth, oscSynth; 
+        
+        let cameraEnabled = false;
+        let videoEl, motionCanvas, motionCtx;
+        let prevFrameData = null;
+        let motionCheckInterval = 2; 
+        let frameCount = 0;
+
+        function toggleControlsPanel() {
+            const wrapper = document.getElementById('controls-wrapper');
+            const chevron = document.getElementById('controls-chevron');
+            
+            if (wrapper.classList.contains('wrapper-minimized')) {
+                wrapper.classList.remove('wrapper-minimized');
+                chevron.classList.remove('chevron-rotated');
+            } else {
+                wrapper.classList.add('wrapper-minimized');
+                chevron.classList.add('chevron-rotated');
+            }
+        }
+
+        function toggleStatusPanel() {
+            const panel = document.getElementById('status-panel');
+            const btn = document.getElementById('status-chevron');
+            const content = panel.querySelector('.glass-panel');
+            if (content.style.opacity === '0') { 
+                content.style.opacity = '1'; 
+                content.style.transform = 'translateY(0)';
+                btn.innerText = '−'; 
+            } else { 
+                content.style.opacity = '0'; 
+                content.style.transform = 'translateY(-10px)';
+                btn.innerText = '+'; 
+            }
+        }
+
+        // --- SUBTÍTULOS POÉTICOS ---
+        const poeticPhrases = [
+            "El universo no está vacío, está respirando.",
+            "Cada toque tuyo despierta una galaxia dormida.",
+            "La materia es solo luz capturada por la gravedad.",
+            "Somos el medio por el cual el cosmos se conoce a sí mismo.",
+            "En la escala de Planck, el caos es la única estructura.",
+            "La realidad es una ilusión muy persistente.",
+            "Fluctuaciones cuánticas: el latido del espacio.",
+            "Aquí, la energía prestada debe ser devuelta.",
+            "La incertidumbre es la semilla de toda creación.",
+            "Observar es transformar el destino de una onda."
+        ];
+
+        let isSubtitleShowing = false;
+
+        function showSubtitle() {
+            if (isSubtitleShowing) return; // Evitar solapamiento rápido
+            
+            const container = document.getElementById('subtitle-text');
+            const paragraph = container.querySelector('p');
+            
+            isSubtitleShowing = true;
+            const phrase = poeticPhrases[Math.floor(Math.random() * poeticPhrases.length)];
+            paragraph.innerText = phrase;
+            
+            // Reiniciar animación
+            container.classList.remove('animate-text-flow');
+            void container.offsetWidth; // Force Reflow
+            container.classList.add('animate-text-flow');
+
+            // Resetear flag cuando termine la animación (12s)
+            setTimeout(() => {
+                isSubtitleShowing = false;
+            }, 12000);
+        }
+
+        // --- LOGS TÉCNICOS (Feedback inmediato) ---
+        let logTimeout;
+        const sysMessages = ["COLAPSO DE ONDA", "VIBRACIÓN", "PICO DE ENERGÍA", "INTERACCIÓN", "FLUCTUACIÓN"];
+
+        function showSystemLog() {
+            const logDiv = document.getElementById('system-log');
+            const logText = document.getElementById('log-text');
+            const msg = sysMessages[Math.floor(Math.random() * sysMessages.length)];
+            logText.innerText = `> ${msg}`;
+            logDiv.style.opacity = '1';
+            clearTimeout(logTimeout);
+            logTimeout = setTimeout(() => { logDiv.style.opacity = '0'; }, 1000);
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+            
+            const indicator = document.getElementById('mode-indicator');
+            const text = document.getElementById('mode-text');
+            
+            if(mode === 'particles') {
+                text.innerText = "PARTÍCULAS"; text.className = "text-white text-sm font-bold font-mono tracking-wider";
+                indicator.className = "w-2 h-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_#00ffff]";
+                gridXZ.material.color.setHex(0x0066ff); gridXZ.material.opacity = 0.25;
+            } else if(mode === 'strings') {
+                text.innerText = "CUERDAS"; text.className = "text-white text-sm font-bold font-mono tracking-wider";
+                indicator.className = "w-2 h-2 rounded-full bg-neon-purple animate-pulse shadow-[0_0_10px_#bd00ff]";
+                gridXZ.material.color.setHex(0xbd00ff); gridXZ.material.opacity = 0.15;
+            } else if(mode === 'energy') {
+                text.innerText = "PLASMA"; text.className = "text-white text-sm font-bold font-mono tracking-wider";
+                indicator.className = "w-2 h-2 rounded-full bg-neon-red animate-pulse shadow-[0_0_10px_#ff0055]";
+                gridXZ.material.color.setHex(0xff3300); gridXZ.material.opacity = 0.4;
+            }
+            gridXY.material.color.copy(gridXZ.material.color); gridXY.material.opacity = gridXZ.material.opacity;
+            gridYZ.material.color.copy(gridXZ.material.color); gridYZ.material.opacity = gridXZ.material.opacity;
+        }
+
+        // --- CÁMARA LOGIC ---
+        async function toggleCamera() {
+            if (!cameraEnabled) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 64, height: 48 } }); 
+                    videoEl = document.getElementById('webcam');
+                    videoEl.srcObject = stream;
+                    cameraEnabled = true;
+                    updateCamUI();
+                } catch (err) {
+                    console.error(err);
+                    alert("Cámara no disponible.");
+                }
+            } else {
+                const stream = videoEl.srcObject;
+                if(stream) stream.getTracks().forEach(t => t.stop());
+                videoEl.srcObject = null;
+                cameraEnabled = false;
+                updateCamUI();
+            }
+        }
+
+        function updateCamUI() {
+            const l = document.getElementById('cam-label');
+            const i = document.getElementById('cam-icon');
+            if (cameraEnabled) {
+                l.innerText = "CAM: ON"; l.classList.add('text-neon-amber'); l.classList.remove('text-gray-400');
+                i.style.textShadow = "0 0 8px #ffaa00";
+            } else {
+                l.innerText = "CAM: OFF"; l.classList.remove('text-neon-amber'); l.classList.add('text-gray-400');
+                i.style.textShadow = "none";
+            }
+        }
+
+        function detectMotion() {
+            if (!cameraEnabled || !videoEl || videoEl.readyState !== 4) return;
+            motionCtx.drawImage(videoEl, 0, 0, 64, 48);
+            const frame = motionCtx.getImageData(0, 0, 64, 48);
+            const data = frame.data;
+
+            if (!prevFrameData) { prevFrameData = new Uint8ClampedArray(data); return; }
+
+            let changed = 0, sumX = 0, sumY = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                if (Math.abs(data[i] - prevFrameData[i]) > 50) { 
+                    changed++;
+                    const idx = i/4;
+                    sumX += idx % 64; sumY += Math.floor(idx / 64);
+                }
+            }
+            prevFrameData.set(data);
+
+            if (changed > 10) {
+                const x = -( (sumX/changed)/64 * 2 - 1 );
+                const y = -( (sumY/changed)/48 * 2 - 1 );
+                interactAtNormalized(x, y);
+            }
+        }
+
+        function interactAtNormalized(x, y) {
+            raycaster.setFromCamera({x, y}, camera);
+            interactionPlane.normal.copy(camera.getWorldDirection(new THREE.Vector3()));
+            interactionPlane.constant = 0;
+            const target = new THREE.Vector3();
+            raycaster.ray.intersectPlane(interactionPlane, target);
+            if (target) {
+                explode(target);
+                // Trigger poético con probabilidad alta
+                if(isExperienceActive && Math.random() < 0.6) showSubtitle(); 
+                // Feedback técnico ocasional
+                if(Math.random() < 0.2) showSystemLog();
+            }
+        }
+
+        // --- THREE.JS ---
+        let scene, camera, renderer, controls;
+        let particlesA, particlesB, particlesInt;
+        let pDataA = [], pDataB = [], pDataInt = [];
+        let linesA, linesB, linesInt; 
+        
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        const interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        let glowTex, clock = new THREE.Clock();
+        let gridXZ, gridXY, gridYZ;
+
+        function init() {
+            glowTex = createGlowTexture();
+            const container = document.getElementById('canvas-container');
+            motionCanvas = document.getElementById('motionCanvas');
+            motionCtx = motionCanvas.getContext('2d');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020204);
+            scene.fog = new THREE.Fog(0x020204, 100, 1200);
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 100, 900);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05; controls.maxDistance = 1200;
+
+            createGrids();
+            
+            const sysA = createSystem(5000, 15, 0x00ffff);
+            particlesA = sysA.points; linesA = sysA.lines; pDataA = sysA.data;
+            
+            const sysB = createSystem(1500, 25, 0xffaa00);
+            particlesB = sysB.points; linesB = sysB.lines; pDataB = sysB.data;
+
+            const sysInt = createSystem(600, 35, 0xbd00ff);
+            particlesInt = sysInt.points; linesInt = sysInt.lines; pDataInt = sysInt.data;
+
+            prewarmParticles(pDataA); prewarmParticles(pDataB);
+
+            window.addEventListener('resize', onResize);
+            window.addEventListener('pointerdown', onTouch);
+            animate();
+        }
+
+        function createSystem(count, size, hex) {
+            const pGeo = new THREE.BufferGeometry();
+            const pPos = new Float32Array(count*3);
+            const pCol = new Float32Array(count*3);
+            const data = [];
+            const baseC = new THREE.Color(hex);
+
+            const lGeo = new THREE.BufferGeometry();
+            const lPos = new Float32Array(count*3*2);
+            const lCol = new Float32Array(count*3*2);
+
+            for(let i=0; i<count; i++) {
+                pPos[i*3]=10000; pPos[i*3+1]=10000; pPos[i*3+2]=10000;
+                lPos[i*6]=10000; lPos[i*6+1]=10000; lPos[i*6+2]=10000;
+                lPos[i*6+3]=10000; lPos[i*6+4]=10000; lPos[i*6+5]=10000;
+
+                const c = baseC.clone().offsetHSL(0,0,(Math.random()*0.2)-0.1);
+                pCol[i*3]=c.r; pCol[i*3+1]=c.g; pCol[i*3+2]=c.b;
+                lCol[i*6]=c.r; lCol[i*6+1]=c.g; lCol[i*6+2]=c.b;
+                lCol[i*6+3]=c.r; lCol[i*6+4]=c.g; lCol[i*6+5]=c.b;
+
+                data.push({life:0, maxLife:1.5+Math.random(), vel:new THREE.Vector3(), baseColor:c, isAlive:false});
+            }
+            
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+            pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
+            const pMat = new THREE.PointsMaterial({
+                size:size, map:glowTex, transparent:true, opacity:0.9,
+                depthWrite:false, blending:THREE.AdditiveBlending,
+                vertexColors:true, sizeAttenuation:true
+            });
+            const points = new THREE.Points(pGeo, pMat);
+            scene.add(points);
+
+            lGeo.setAttribute('position', new THREE.BufferAttribute(lPos,3));
+            lGeo.setAttribute('color', new THREE.BufferAttribute(lCol,3));
+            const lMat = new THREE.LineBasicMaterial({
+                transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, vertexColors:true
+            });
+            const lines = new THREE.LineSegments(lGeo, lMat);
+            lines.visible = false; 
+            scene.add(lines);
+
+            return { points, lines, data };
+        }
+
+        function createGrids() {
+            const size=1200, div=24, c1=0x0066ff, c2=0x0a1a3a; 
+            gridXZ = new THREE.GridHelper(size,div,c1,c2);
+            gridXZ.material.transparent=true; gridXZ.material.opacity=0.25; scene.add(gridXZ);
+            gridXY = gridXZ.clone(); gridXY.rotation.x=Math.PI/2; scene.add(gridXY);
+            gridYZ = gridXZ.clone(); gridYZ.rotation.z=Math.PI/2; scene.add(gridYZ);
+        }
+
+        function prewarmParticles(data) {
+            for(let i=0; i<data.length*0.3; i++) {
+                data[i].isAlive = true; data[i].life = Math.random() * data[i].maxLife;
+            }
+        }
+
+        function updateSystem(points, lines, data, delta, type) {
+            const pPosArr = points.geometry.attributes.position.array;
+            const pColArr = points.geometry.attributes.color.array;
+            const lPosArr = lines.geometry.attributes.position.array;
+            const lColArr = lines.geometry.attributes.color.array;
+
+            const showPoints = (currentMode === 'particles' || currentMode === 'energy');
+            const showLines = (currentMode === 'strings');
+            points.visible = showPoints; lines.visible = showLines;
+
+            let pIdx=0, lIdx=0, cIdx=0, lcIdx=0;
+            const range = 600;
+
+            for(let i=0; i<data.length; i++) {
+                const d = data[i];
+                if(d.isAlive) {
+                    if(pPosArr[pIdx]>5000 && showPoints) {
+                        pPosArr[pIdx] = (Math.random()-0.5)*range;
+                        pPosArr[pIdx+1] = (Math.random()-0.5)*range;
+                        pPosArr[pIdx+2] = (Math.random()-0.5)*range;
+                        d.vel.set((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5))
+                             .normalize().multiplyScalar(type==='high'?2:0.8);
+                    }
+
+                    d.life -= delta * timeSpeed;
+                    const ratio = d.life/d.maxLife;
+
+                    let intensity = ratio<0.2 ? ratio*5 : 1;
+                    if(type==='int') intensity = ratio;
+                    
+                    let r,g,b;
+                    if (currentMode === 'energy') {
+                        r = 1; g = ratio * 0.8; b = ratio * 0.2; intensity *= 1.5; 
+                    } else if (currentMode === 'strings') {
+                        r = d.baseColor.r * 0.8 + 0.2; g = d.baseColor.g * 0.5; b = 1;
+                    } else {
+                        r = d.baseColor.r; g = d.baseColor.g; b = d.baseColor.b;
+                    }
+
+                    pColArr[cIdx] = r*intensity; pColArr[cIdx+1] = g*intensity; pColArr[cIdx+2] = b*intensity;
+                    lColArr[lcIdx] = r*intensity; lColArr[lcIdx+1] = g*intensity; lColArr[lcIdx+2] = b*intensity;
+                    lColArr[lcIdx+3] = r*intensity; lColArr[lcIdx+4] = g*intensity; lColArr[lcIdx+5] = b*intensity;
+
+                    if(d.life<=0) {
+                        d.isAlive=false; pPosArr[pIdx]=10000; lPosArr[lIdx]=10000; lPosArr[lIdx+3]=10000; 
+                    } else {
+                        const moveX = d.vel.x*delta*timeSpeed*60;
+                        const moveY = d.vel.y*delta*timeSpeed*60;
+                        const moveZ = d.vel.z*delta*timeSpeed*60;
+                        pPosArr[pIdx] += moveX; pPosArr[pIdx+1] += moveY; pPosArr[pIdx+2] += moveZ;
+
+                        lPosArr[lIdx] = pPosArr[pIdx];
+                        lPosArr[lIdx+1] = pPosArr[pIdx+1];
+                        lPosArr[lIdx+2] = pPosArr[pIdx+2];
+                        const tailFactor = 4.0; 
+                        lPosArr[lIdx+3] = pPosArr[pIdx] - d.vel.x * tailFactor;
+                        lPosArr[lIdx+4] = pPosArr[pIdx+1] - d.vel.y * tailFactor;
+                        lPosArr[lIdx+5] = pPosArr[pIdx+2] - d.vel.z * tailFactor;
+                    }
+                } else if(type!=='int') {
+                    if(Math.random() < 0.02*timeSpeed) { d.isAlive=true; d.life=d.maxLife; }
+                }
+                pIdx+=3; cIdx+=3; lIdx+=6; lcIdx+=6;
+            }
+            points.geometry.attributes.position.needsUpdate=true; points.geometry.attributes.color.needsUpdate=true;
+            lines.geometry.attributes.position.needsUpdate=true; lines.geometry.attributes.color.needsUpdate=true;
+        }
+
+        function createGlowTexture() {
+            const size=64, cvs=document.createElement('canvas'), ctx=cvs.getContext('2d');
+            cvs.width=size; cvs.height=size;
+            const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+            g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.2,'rgba(255,255,255,0.8)');
+            g.addColorStop(0.5,'rgba(255,255,255,0.2)'); g.addColorStop(1,'rgba(0,0,0,0)');
+            ctx.fillStyle=g; ctx.fillRect(0,0,size,size);
+            return new THREE.CanvasTexture(cvs);
+        }
+
+        function onTouch(e) {
+            const ptr = new THREE.Vector2();
+            ptr.x = (e.clientX/window.innerWidth)*2-1; ptr.y = -(e.clientY/window.innerHeight)*2+1;
+            interactAtNormalized(ptr.x, ptr.y);
+        }
+
+        function interactAtNormalized(x, y) {
+            raycaster.setFromCamera({x, y}, camera);
+            interactionPlane.normal.copy(camera.getWorldDirection(new THREE.Vector3()));
+            interactionPlane.constant = 0;
+            const target = new THREE.Vector3();
+            raycaster.ray.intersectPlane(interactionPlane, target);
+            if(target) {
+                explode(target);
+                if(isExperienceActive && Math.random() < 0.4) showSubtitle();
+            }
+        }
+
+        function explode(pos) {
+            if(audioEnabled && oscSynth) {
+                const notes = ["C4","E4","G4","B4","C5"];
+                oscSynth.triggerAttackRelease(notes[Math.floor(Math.random()*notes.length)], "16n");
+            }
+            let count=0, limit=40;
+            const pPos = particlesInt.geometry.attributes.position.array;
+            for(let i=0; i<pDataInt.length; i++) {
+                if(count>=limit) break;
+                const d = pDataInt[i];
+                if(!d.isAlive) {
+                    d.isAlive=true; d.life=1+Math.random(); d.maxLife=d.life;
+                    const pIdx = i*3, spread=20;
+                    pPos[pIdx] = pos.x+(Math.random()-0.5)*spread;
+                    pPos[pIdx+1] = pos.y+(Math.random()-0.5)*spread;
+                    pPos[pIdx+2] = pos.z+(Math.random()-0.5)*spread;
+                    d.vel.set((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5))
+                         .normalize().multiplyScalar(Math.random()*8+3);
+                    count++;
+                }
+            }
+            particlesInt.geometry.attributes.position.needsUpdate=true;
+        }
+
+        async function startExperience() {
+            if(isExperienceActive) return; isExperienceActive=true;
+            await Tone.start(); await initAudio(); toggleAudio();
+            document.getElementById('start-screen').classList.add('fade-out');
+            setTimeout(()=> {
+                document.getElementById('start-screen').style.display='none';
+                document.getElementById('main-ui').classList.remove('hidden-ui');
+                document.getElementById('main-ui').classList.add('fade-in');
+            },800);
+            new TWEEN.Tween(camera.position).to({x:0,y:0,z:450},2500).easing(TWEEN.Easing.Quartic.InOut).start();
+        }
+
+        async function initAudio() {
+            if(!noiseSynth) {
+                noiseSynth = new Tone.NoiseSynth({noise:{type:"pink"},envelope:{attack:2,decay:1,sustain:1}}).toDestination();
+                noiseSynth.connect(new Tone.Filter(100,"lowpass").toDestination()); noiseSynth.volume.value = -25;
+                oscSynth = new Tone.PolySynth(Tone.Synth, {oscillator:{type:"fatsine"}}).toDestination();
+                oscSynth.connect(new Tone.Reverb(1.5).toDestination()); oscSynth.volume.value = -6;
+            }
+        }
+        
+        function toggleAudio() {
+            if(!noiseSynth) return;
+            if(audioEnabled) { noiseSynth.triggerRelease(); audioEnabled=false; }
+            else { noiseSynth.triggerAttack(); audioEnabled=true; }
+            const l=document.getElementById('audio-label'), i=document.getElementById('audio-icon');
+            l.innerText = audioEnabled ? "SONIDO: ON" : "SONIDO: OFF";
+            i.innerText = audioEnabled ? "🔊" : "🔇";
+            l.classList.toggle('text-neon-cyan', audioEnabled);
+        }
+
+        function toggleLog() { document.getElementById('side-panel').classList.toggle('translate-x-full'); }
+        function updateTimeSpeed(v) { timeSpeed=parseFloat(v); document.getElementById('speed-val').innerText=timeSpeed.toFixed(1)+'x'; }
+        function onResize() { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); }
+
+        function animate(time) {
+            requestAnimationFrame(animate); TWEEN.update(time);
+            frameCount++;
+            if (cameraEnabled && frameCount % motionCheckInterval === 0) detectMotion();
+            const delta = Math.min(clock.getDelta(), 0.1);
+            updateSystem(particlesA, linesA, pDataA, delta, 'ambient');
+            updateSystem(particlesB, linesB, pDataB, delta, 'high');
+            updateSystem(particlesInt, linesInt, pDataInt, delta, 'int');
+            controls.update(); renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
